@@ -5,6 +5,19 @@ const {mongoose} = require('./database')
 const cors = require('cors')
 const { response } = require('express')
 
+/* app.use(function (req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-access-token, x-refresh-token, _id");
+
+    res.header(
+        'Access-Control-Expose-Headers',
+        'x-access-token, x-refresh-token'
+    );
+
+    next();
+}); */
+
 app.use(cors())
 app.use(express.json())
 
@@ -33,7 +46,7 @@ app.post('/lists', (req, res) => {
  * Purpose: Update a list
  */
 app.patch('/lists/:id', (req, res) => {
-    List.findByIdAndUpdate(req.params.id, {$set: req.body}).then(res.sendStatus(200))
+    List.findByIdAndUpdate(req.params.id, {$set: req.body}).then(res.send({message: 'updated'}))
 })
 
 /**
@@ -74,7 +87,7 @@ app.get('/tasks/:id', (req, res) => {
  * Purpose: Update a task
  */
 app.patch('/tasks/:id', (req, res) => {
-    Task.findByIdAndUpdate(req.params.id, {$set: req.body}).then(res.sendStatus(200))
+    Task.findByIdAndUpdate(req.params.id, {$set: req.body}).then(res.send({message: 'success'}))
 })
 
 /**
