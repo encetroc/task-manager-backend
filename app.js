@@ -27,8 +27,9 @@ const verifySession = (req, res, next) => {
     User.findByIdAndToken(_id, refreshToken).then(user => {
         if (!user) return Promise.reject({message: 'user not found'})
         req.user_id = _id
+        req.userObject = user
         req.refreshToken = refreshToken
-        const isSessionValid = false
+        let isSessionValid = false
         user.sessions.forEach(session => {
             if (session.token === refreshToken) {
                 if (!User.hasRefreshTokenExpired(session.expiresAt)) {
@@ -38,7 +39,7 @@ const verifySession = (req, res, next) => {
         })
         if (isSessionValid) next()
         else return Promise.reject({message: 'session is not valid'})
-    }).catch (err => res.status(401).send(err))
+    }).catch (err => res.status(401).send({message: 'unauthorized'}))
 }
 
 /**
@@ -179,7 +180,9 @@ app.post('/users/login', (req, res) => {
  * Purpose: Get a new access token
  */
 app.get('/users/me/access-token', verifySession, (req, res) => {
-
+    req.userObject.generateJsonWebToken().then(accessToken => {
+        res.header('x-access-token', accessToken).send({accessToken})
+    }).catch(err => res.status('400').send(err))
 })
 
 app.listen('3000', console.log("api is up"))
