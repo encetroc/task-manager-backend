@@ -4,6 +4,7 @@ const {List, Task, User} = require('./models')
 const {mongoose} = require('./database')
 const cors = require('cors')
 const { response } = require('express')
+const jwt = require('jsonwebtoken')
 
 app.use(function (req, res, next) {
     res.header("Access-Control-Allow-Origin", "*");
@@ -20,6 +21,18 @@ app.use(function (req, res, next) {
 
 //app.use(cors())
 app.use(express.json())
+
+const authenticate = (req, res, next) => {
+    const accessToken = req.header('x-access-token')
+    jwt.verify(accessToken, process.env.SECRET, (err, decoded) => {
+        if (err) {
+            res.status(401).send(err)
+        } else {
+            req.user_id = decoded._id
+            next()
+        }
+    })
+}
 
 const verifySession = (req, res, next) => {
     const refreshToken = req.header('x-refresh-token')
@@ -46,8 +59,8 @@ const verifySession = (req, res, next) => {
  * GET /lists
  * Purpose: Get all lists
  */
-app.get('/lists', (req, res) => {
-    List.find().then(lists => {
+app.get('/lists', authenticate, (req, res) => {
+    List.find({_userId: req.user_id}).then(lists => {
         res.send(lists)
     })
 })
@@ -56,9 +69,9 @@ app.get('/lists', (req, res) => {
  * POST /lists
  * Purpose: Create a new list
  */
-app.post('/lists', (req, res) => {
+app.post('/lists', authenticate, (req, res) => {
     const title = req.body.title
-    const list = new List({title})
+    const list = new List({title, _userId: req.user_id})
     list.save()
     .then(newList => res.send(newList))
     .catch(err => send(err))
@@ -68,8 +81,8 @@ app.post('/lists', (req, res) => {
  * PATCH /lists
  * Purpose: Update a list
  */
-app.patch('/lists/:id', (req, res) => {
-    List.findByIdAndUpdate(req.params.id, {$set: req.body})
+app.patch('/lists/:id', authenticate, (req, res) => {
+    List.findByIdAndUpdate({_id: req.params.id, _userId: req.user_id}, {$set: req.body})
     .then(res.send({message: 'updated'}))
     .catch(err => send(err))
 })
@@ -78,9 +91,12 @@ app.patch('/lists/:id', (req, res) => {
  * DELETE /lists
  * Purpose: Delete a list
  */
-app.delete('/lists/:id', (req, res) => {
-    List.findByIdAndDelete(req.params.id)
-    .then(res.sendStatus(200))
+app.delete('/lists/:id', authenticate, (req, res) => {
+    List.findByIdAndDelete({_id: req.params.id, _userId: req.user_id})
+    .then(list => {
+        deleteAllTasksInList(list._id)
+        res.send(list)
+    })
     .catch(err => send(err))
 })
 
@@ -88,7 +104,7 @@ app.delete('/lists/:id', (req, res) => {
  * GET /lists/:listId/tasks
  * Purpose: Get all tasks in a list
  */
-app.get('/lists/:listId/tasks', (req, res) => {
+app.get('/lists/:listId/tasks', authenticate, (req, res) => {
     Task.find({_listId: req.params.listId})
     .then(tasks => res.send(tasks))
     .catch(err => send(err))
@@ -98,11 +114,20 @@ app.get('/lists/:listId/tasks', (req, res) => {
  * POST /lists/:listId/tasks
  * Purpose: Create a new task in a list
  */
-app.post('/lists/:listId/tasks', (req, res) => {
-    const task = new Task({title: req.body.title, _listId: req.params.listId})
-    task.save()
-    .then(newTask => res.send(newTask))
-    .catch(err => send(err))
+app.post('/lists/:listId/tasks', authenticate, (req, res) => {
+    List.findOne({_id: req.params.listId, _userId: req.user_id})
+    .then(list => {
+        if (list) return true
+        else return false
+    }).then(canCreateTask => {
+        if (canCreateTask) {
+            const task = new Task({title: req.body.title, _listId: req.params.listId})
+            task.save()
+            .then(newTask => res.send(newTask))
+        } else {
+            res.sendStatus('404')
+        }
+    }).catch(err => send(err))
 })
 
 /**
@@ -119,20 +144,44 @@ app.get('/tasks/:id', (req, res) => {
  * PATCH /tasks/:taskId
  * Purpose: Update a task
  */
-app.patch('/tasks/:id', (req, res) => {
-    Task.findByIdAndUpdate(req.params.id, {$set: req.body})
-    .then(res.send({message: 'success'}))
-    .catch(err => send(err))
+app.patch('/tasks/:id', authenticate, (req, res) => {
+    Task.findById(req.params.id)
+    .then(task => {
+        List.findOne({_id: task._listId, _userId: req.user_id})
+        .then(list => {
+            if (list) return true
+            else return false
+        }).then(canUpdateTask => {
+            if (canUpdateTask) {
+                Task.findByIdAndUpdate(req.params.id, {$set: req.body})
+                .then(res.send({message: 'success'}))
+            } else {
+                res.sendStatus('404')
+            }
+        })
+    }).catch(err => send(err))
 })
 
 /**
  * DELETE /tasks/:id
  * Purpose: Delete a task
  */
-app.delete('/tasks/:id', (req, res) => {
-    Task.findByIdAndDelete(req.params.id)
-    .then(res.sendStatus(200))
-    .catch(err => send(err))
+app.delete('/tasks/:id', authenticate, (req, res) => {
+    Task.findById(req.params.id)
+    .then(task => {
+        List.findOne({_id: task._listId, _userId: req.user_id})
+        .then(list => {
+            if (list) return true
+            else return false
+        }).then(canDeleteTask => {
+            if (canDeleteTask) {
+                Task.findByIdAndDelete(req.params.id)
+                .then(task => res.send(task))
+            } else {
+                res.sendStatus('404')
+            }
+        })
+    }).catch(err => send(err))
 })
 
 /**
@@ -184,5 +233,12 @@ app.get('/users/me/access-token', verifySession, (req, res) => {
         res.header('x-access-token', accessToken).send({accessToken})
     }).catch(err => res.status('400').send(err))
 })
+
+/**
+ * @description delete all tasks in a list
+ */
+const deleteAllTasksInList = (_listId) => {
+    Task.deleteMany({_listId}).then(console.log('tasks deleted'))
+}
 
 app.listen('3000', console.log("api is up"))
