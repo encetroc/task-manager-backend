@@ -2,7 +2,6 @@ const express = require('express')
 const app = express()
 const {List, Task, User} = require('./models')
 const {mongoose} = require('./database')
-const cors = require('cors')
 const { response } = require('express')
 const jwt = require('jsonwebtoken')
 
@@ -10,16 +9,10 @@ app.use(function (req, res, next) {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-access-token, x-refresh-token, _id");
-
-    res.header(
-        'Access-Control-Expose-Headers',
-        'x-access-token, x-refresh-token'
-    );
-
+    res.header('Access-Control-Expose-Headers', 'x-access-token, x-refresh-token');
     next();
 });
 
-//app.use(cors())
 app.use(express.json())
 
 const authenticate = (req, res, next) => {
